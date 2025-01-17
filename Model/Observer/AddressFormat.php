@@ -20,15 +20,20 @@ namespace Astound\Affirm\Model\Observer;
 
 use Magento\Framework\Event\ObserverInterface;
 use Magento\Directory\Model\RegionFactory;
+use Magento\Directory\Model\ResourceModel\Region as RegionResource;
 
 class AddressFormat implements ObserverInterface
 {
-    public $regionFactory;
+    public RegionFactory $regionFactory;
+    public RegionResource $regionResource;
+
     public function __construct(
-        RegionFactory $regionFactory
+        RegionFactory $regionFactory,
+        RegionResource $regionResource
     )
     {
         $this->regionFactory = $regionFactory;
+        $this->regionResource = $regionResource;
     }
     /**
      * Save region if address object has region_id but not region name
@@ -38,18 +43,27 @@ class AddressFormat implements ObserverInterface
      */
     public function execute(\Magento\Framework\Event\Observer $observer)
     {
-
         $address = $observer->getEvent()->getAddress();
-        if($address->getAddressType()) {
-            if ($address->getRegion() == null) {
-                $regionId = $address->getRegionId();
-                /** @var \Magento\Directory\Model\Region $region */
-                $region = $this->regionFactory->create();
-                $region->loadByCode($region, $regionId);
-                $address->setRegion($region->getName());
-                $address->setRegionCode($region->getCode());
-                $address->save();
+
+        if(!$address->getAddressType()) {
+            return $this;
+        }
+
+        if (!$address->getRegion() && $address->getRegionId()) {
+            $regionId = $address->getRegionId();
+
+            /** @var \Magento\Directory\Model\Region $region */
+            $region = $this->regionFactory->create();
+
+            $this->regionResource->load($region, $regionId);
+
+            if ($region->isEmpty()) {
+                return $this;
             }
+
+            $address->setRegion($region->getName())
+                ->setRegionCode($region->getCode())
+                ->save();
         }
 
         return $this;
