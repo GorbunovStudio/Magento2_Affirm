@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Astound\Affirm\Plugin;
 
 use Astound\Affirm\Service\PlacedOrderHolder;
-use Braintree\Transaction;
+
 use Closure;
 use Magento\Quote\Api\CartManagementInterface;
 use Magento\Quote\Api\CartRepositoryInterface;
@@ -43,16 +43,32 @@ class OrderCancellation
 
             $payment = $quote->getPayment();
 
+            // Abort if the payment method is not relevant.
             if ($payment->getMethod() !== 'affirm_gateway') {
                 throw $e;
             }
 
+            $errorMessagePrefix = 'Unable to cancel payment: ';
+
             /** @var \Magento\Sales\Model\Order|null */
             $order = $this->placedOrderHolder->retrieve();
 
-            // Abort if the order object is not available or available not a relevant order.
-            if (!$order || $order->getIncrementId() !== $quote->getReservedOrderId()) {
-                throw $e;
+            // Abort if the order object is not available
+            if (!$order) {
+                throw new RuntimeException(
+                    $errorMessagePrefix . "Order data unavailable. Reserved order ID: {$quote->getReservedOrderId()}",
+                    $e->getCode(),
+                    $e
+                );
+            }
+
+            // Abort if the order object is not relevant for transaction.
+            if ($order->getIncrementId() !== $quote->getReservedOrderId()) {
+                throw new RuntimeException(
+                    $errorMessagePrefix . "Available order data ({$order->getIncrementId()}, {$order->getId()}) doesn't match the quote value: {$quote->getReservedOrderId()}",
+                    $e->getCode(),
+                    $e
+                );
             }
 
             // Cancel the order in case when it was saved.
@@ -75,48 +91,37 @@ class OrderCancellation
             $methodInstance = $orderPayment->getMethodInstance();
             $methodInstance->setStore($order->getStoreId());
 
-            $isPaymentCanceled = false;
+            $errorMessage = "";
 
-            switch ($orderPayment->getAdditionalInformation('status')) {
-                case Transaction::SUBMITTED_FOR_SETTLEMENT:
-                    if ($methodInstance->canVoid()) {
-                        $methodInstance->void($orderPayment);
-
-                        $isPaymentCanceled = true;
-                    }
-
-                    break;
-                case Transaction::SETTLED:
-                case Transaction::SETTLING:
-                    if ($orderPayment->getCreatedTransaction() && $orderPayment->getCreatedInvoice()) {
-                        $creditmemo = $this->creditmemoFactory->createByOrder($order);
-                        $creditmemo->setInvoice($orderPayment->getCreatedInvoice());
-
-                        $orderPayment->setCreditmemo($creditmemo);
-                        $orderPayment->setParentTransactionId($orderPayment->getCreatedTransaction()->getTxnId());
-
-                        $methodInstance->refund($orderPayment, $orderPayment->getAmountPaid());
-
-                        $isPaymentCanceled = true;    
-                    }
-                    
-                    break; 
+            if (!$methodInstance->canRefund()) {
+                $errorMessage = "Transaction can not be refunded.";
             }
 
-            if ($isPaymentCanceled) {
+            if (!$orderPayment->getCreatedTransaction()) {
+                $errorMessage = "Transaction information is missing.";
+            }
+
+            if (!$orderPayment->getCreatedInvoice()) {
+                $errorMessage = "Invoice is missing.";
+            }
+
+            if ($errorMessage) {
                 throw new RuntimeException(
-                    "The order payment with transaction ID '{$orderPayment->getTransactionId()}' has been canceled.",
+                    $errorMessagePrefix . $errorMessage,
                     $e->getCode(),
                     $e
                 );
             }
 
-            throw new RuntimeException(
-                "The order payment with transaction ID '{$orderPayment->getTransactionId()}' has not been canceled.
-                 Please, notify us to cancel the payment.",
-                $e->getCode(),
-                $e
-            );
+            $creditmemo = $this->creditmemoFactory->createByOrder($order);
+            $creditmemo->setInvoice($orderPayment->getCreatedInvoice());
+
+            $orderPayment->setCreditmemo($creditmemo);
+            $orderPayment->setParentTransactionId($orderPayment->getCreatedTransaction()->getTxnId());
+
+            $methodInstance->refund($orderPayment, $orderPayment->getAmountPaid());
+
+            throw $e;
         }
     }
 }
