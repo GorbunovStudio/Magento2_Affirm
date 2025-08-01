@@ -23,4 +23,9 @@ class PlacedOrderHolder
     {
         return $this->order;
     }
+
+    public function clear(): void
+    {
+        $this->order = null;
+    }
 }
