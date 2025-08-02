@@ -122,6 +122,8 @@ class OrderCancellation
             $methodInstance->refund($orderPayment, $orderPayment->getAmountPaid());
 
             throw $e;
+        } finally {
+            $this->placedOrderHolder->clear();
         }
     }
 }
