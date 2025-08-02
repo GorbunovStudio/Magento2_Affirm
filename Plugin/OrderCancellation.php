@@ -123,7 +123,6 @@ class OrderCancellation
 
             throw $e;
         } finally {
-            // Clear the held order after processing, regardless of success or failure
             $this->placedOrderHolder->clear();
         }
     }
