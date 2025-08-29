@@ -20,20 +20,15 @@ namespace Astound\Affirm\Model\Observer;
 
 use Magento\Framework\Event\ObserverInterface;
 use Magento\Directory\Model\RegionFactory;
-use Magento\Directory\Model\ResourceModel\Region as RegionResource;
 
 class AddressFormat implements ObserverInterface
 {
-    public RegionFactory $regionFactory;
-    public RegionResource $regionResource;
-
+    public $regionFactory;
     public function __construct(
-        RegionFactory $regionFactory,
-        RegionResource $regionResource
+        RegionFactory $regionFactory
     )
     {
         $this->regionFactory = $regionFactory;
-        $this->regionResource = $regionResource;
     }
     /**
      * Save region if address object has region_id but not region name
@@ -43,27 +38,18 @@ class AddressFormat implements ObserverInterface
      */
     public function execute(\Magento\Framework\Event\Observer $observer)
     {
+        /** @var $address \Magento\Sales\Model\Order\Address */
         $address = $observer->getEvent()->getAddress();
-
-        if(!$address->getAddressType()) {
-            return $this;
-        }
-
-        if (!$address->getRegion() && $address->getRegionId()) {
-            $regionId = $address->getRegionId();
-
-            /** @var \Magento\Directory\Model\Region $region */
-            $region = $this->regionFactory->create();
-
-            $this->regionResource->load($region, $regionId);
-
-            if ($region->isEmpty()) {
-                return $this;
+        if($address->getAddressType()) {
+            if ($address->getRegionId() !== null && $address->getRegion() === null) {
+                /** @var \Magento\Directory\Model\Region $region */
+                $region = $this->regionFactory->create()->load($address->getRegionId());
+                if($region->getId()) {
+                    $address->setRegion($region->getName());
+                    $address->setRegionCode($region->getCode());
+                    $address->save();   
+                }
             }
-
-            $address->setRegion($region->getName())
-                ->setRegionCode($region->getCode())
-                ->save();
         }
 
         return $this;
