@@ -7,6 +7,7 @@ namespace Astound\Affirm\Plugin;
 use Astound\Affirm\Service\PlacedOrderHolder;
 
 use Closure;
+use Magento\Framework\Validator\Exception as ValidatorException;
 use Magento\Quote\Api\CartManagementInterface;
 use Magento\Quote\Api\CartRepositoryInterface;
 use Magento\Quote\Api\Data\PaymentInterface;
@@ -46,6 +47,24 @@ class OrderCancellation
             // Abort if the payment method is not relevant.
             if ($payment->getMethod() !== 'affirm_gateway') {
                 throw $e;
+            }
+
+            // Re-throw validation exceptions with specific processor decline messages.
+            if ($e instanceof ValidatorException) {
+                $validatorExceptionMessages = [
+                    'Processor Declined',
+                    'Insufficient Funds',
+                    'Processor Declined - Fraud Suspected',
+                    'Issuer or Cardholder has put a restriction on the card',
+                    'Declined - Call Issuer',
+                    'Closed Card',
+                ];
+
+                foreach ($validatorExceptionMessages as $message) {
+                    if (stripos($e->getMessage(), $message) !== false) {
+                        throw $e;
+                    }
+                }
             }
 
             $errorMessagePrefix = 'Unable to cancel payment: ';
