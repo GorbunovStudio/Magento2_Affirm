@@ -28,8 +28,7 @@ class OrderCancellation
         private OrderRepositoryInterface $orderRepository,
         private PlacedOrderHolder $placedOrderHolder,
         private CreditmemoFactory $creditmemoFactory
-    ) {
-    }
+    ) {}
 
     public function aroundPlaceOrder(
         CartManagementInterface $subject,
@@ -51,20 +50,7 @@ class OrderCancellation
 
             // Re-throw validation exceptions with specific processor decline messages.
             if ($e instanceof ValidatorException) {
-                $validatorExceptionMessages = [
-                    'Processor Declined',
-                    'Insufficient Funds',
-                    'Processor Declined - Fraud Suspected',
-                    'Issuer or Cardholder has put a restriction on the card',
-                    'Declined - Call Issuer',
-                    'Closed Card',
-                ];
-
-                foreach ($validatorExceptionMessages as $message) {
-                    if (stripos($e->getMessage(), $message) !== false) {
-                        throw $e;
-                    }
-                }
+                throw $e;
             }
 
             $errorMessagePrefix = 'Unable to cancel payment: ';
