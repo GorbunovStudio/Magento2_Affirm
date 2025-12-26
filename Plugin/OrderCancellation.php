@@ -48,7 +48,6 @@ class OrderCancellation
                 throw $e;
             }
 
-            // Re-throw validation exceptions with specific processor decline messages.
             if ($e instanceof ValidatorException) {
                 throw $e;
             }
