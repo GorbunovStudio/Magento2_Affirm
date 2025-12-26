@@ -7,6 +7,7 @@ namespace Astound\Affirm\Plugin;
 use Astound\Affirm\Service\PlacedOrderHolder;
 
 use Closure;
+use Magento\Framework\Validator\Exception as ValidatorException;
 use Magento\Quote\Api\CartManagementInterface;
 use Magento\Quote\Api\CartRepositoryInterface;
 use Magento\Quote\Api\Data\PaymentInterface;
@@ -27,8 +28,7 @@ class OrderCancellation
         private OrderRepositoryInterface $orderRepository,
         private PlacedOrderHolder $placedOrderHolder,
         private CreditmemoFactory $creditmemoFactory
-    ) {
-    }
+    ) {}
 
     public function aroundPlaceOrder(
         CartManagementInterface $subject,
@@ -45,6 +45,10 @@ class OrderCancellation
 
             // Abort if the payment method is not relevant.
             if ($payment->getMethod() !== 'affirm_gateway') {
+                throw $e;
+            }
+
+            if ($e instanceof ValidatorException) {
                 throw $e;
             }
 
