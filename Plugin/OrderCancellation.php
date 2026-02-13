@@ -48,10 +48,6 @@ class OrderCancellation
                 throw $e;
             }
 
-            if ($e instanceof ValidatorException) {
-                throw $e;
-            }
-
             $errorMessagePrefix = 'Unable to cancel payment: ';
 
             /** @var \Magento\Sales\Model\Order|null */
@@ -87,9 +83,17 @@ class OrderCancellation
             /** @var \Magento\Sales\Model\Order\Payment|null */
             $orderPayment = $order->getPayment();
 
-            // Abort if the order lacks payment information.
             if (!$orderPayment) {
                 throw $e;
+            }
+
+            if ($e instanceof ValidatorException) {
+                $transactionId = $orderPayment->getAdditionalInformation('transaction_id')
+                    ?: $orderPayment->getAdditionalInformation('charge_id');
+
+                if (!$transactionId) {
+                    throw $e;
+                }
             }
 
             $methodInstance = $orderPayment->getMethodInstance();
@@ -101,12 +105,31 @@ class OrderCancellation
                 $errorMessage = "Transaction can not be refunded.";
             }
 
-            if (!$orderPayment->getCreatedTransaction()) {
-                $errorMessage = "Transaction information is missing.";
+            // Retrieve transaction - use fallback to additionalInformation if createdTransaction is not available
+            $transaction = $orderPayment->getCreatedTransaction();
+            $transactionId = null;
+
+            if (!$transaction) {
+                // Fallback: get transaction ID from additionalInformation
+                // This handles cases where payment was captured but ValidatorException occurred before transaction creation
+                $transactionId = $orderPayment->getAdditionalInformation('transaction_id')
+                    ?: $orderPayment->getAdditionalInformation('charge_id');
+
+                if (!$transactionId) {
+                    $errorMessage = "Transaction information is missing.";
+                }
+            } else {
+                $transactionId = $transaction->getTxnId();
             }
 
-            if (!$orderPayment->getCreatedInvoice()) {
-                $errorMessage = "Invoice is missing.";
+            // Retrieve invoice - create manually if needed for ValidatorException case
+            $invoice = $orderPayment->getCreatedInvoice();
+
+            if (!$invoice) {
+                // Create invoice manually for refund
+                // This is required when ValidatorException occurs after payment capture but before invoice creation
+                $invoice = $order->prepareInvoice();
+                $invoice->register();
             }
 
             if ($errorMessage) {
@@ -118,10 +141,10 @@ class OrderCancellation
             }
 
             $creditmemo = $this->creditmemoFactory->createByOrder($order);
-            $creditmemo->setInvoice($orderPayment->getCreatedInvoice());
+            $creditmemo->setInvoice($invoice);
 
             $orderPayment->setCreditmemo($creditmemo);
-            $orderPayment->setParentTransactionId($orderPayment->getCreatedTransaction()->getTxnId());
+            $orderPayment->setParentTransactionId($transactionId);
 
             $methodInstance->refund($orderPayment, $orderPayment->getAmountPaid());
 
