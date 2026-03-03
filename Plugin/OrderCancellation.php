@@ -43,17 +43,20 @@ class OrderCancellation
 
             $payment = $quote->getPayment();
 
-            // Abort if the payment method is not relevant.
             if ($payment->getMethod() !== 'affirm_gateway') {
+                throw $e;
+            }
+
+            /** @var \Magento\Sales\Model\Order|null */
+            $order = $this->placedOrderHolder->retrieve();
+
+
+            if ($e instanceof ValidatorException && !$order) {
                 throw $e;
             }
 
             $errorMessagePrefix = 'Unable to cancel payment: ';
 
-            /** @var \Magento\Sales\Model\Order|null */
-            $order = $this->placedOrderHolder->retrieve();
-
-            // Abort if the order object is not available
             if (!$order) {
                 throw new RuntimeException(
                     $errorMessagePrefix . "Order data unavailable. Reserved order ID: {$quote->getReservedOrderId()}",
@@ -62,22 +65,12 @@ class OrderCancellation
                 );
             }
 
-            // Abort if the order object is not relevant for transaction.
             if ($order->getIncrementId() !== $quote->getReservedOrderId()) {
                 throw new RuntimeException(
                     $errorMessagePrefix . "Available order data ({$order->getIncrementId()}, {$order->getId()}) doesn't match the quote value: {$quote->getReservedOrderId()}",
                     $e->getCode(),
                     $e
                 );
-            }
-
-            // Cancel the order in case when it was saved.
-            if ($order->getId()) {
-                $order->cancel();
-
-                $this->orderRepository->save($order);
-
-                throw $e;
             }
 
             /** @var \Magento\Sales\Model\Order\Payment|null */
@@ -87,13 +80,16 @@ class OrderCancellation
                 throw $e;
             }
 
-            if ($e instanceof ValidatorException) {
-                $transactionId = $orderPayment->getAdditionalInformation('transaction_id')
-                    ?: $orderPayment->getAdditionalInformation('charge_id');
+            $transactionId = $orderPayment->getAdditionalInformation('transaction_id')
+                ?: $orderPayment->getAdditionalInformation('charge_id');
 
-                if (!$transactionId) {
-                    throw $e;
-                }
+            if (!$transactionId) {
+                throw $e;
+            }
+
+            if ($order->getId()) {
+                $order->cancel();
+                $this->orderRepository->save($order);
             }
 
             $methodInstance = $orderPayment->getMethodInstance();
@@ -105,29 +101,15 @@ class OrderCancellation
                 $errorMessage = "Transaction can not be refunded.";
             }
 
-            // Retrieve transaction - use fallback to additionalInformation if createdTransaction is not available
-            $transaction = $orderPayment->getCreatedTransaction();
-            $transactionId = null;
+            $createdTransaction = $orderPayment->getCreatedTransaction();
 
-            if (!$transaction) {
-                // Fallback: get transaction ID from additionalInformation
-                // This handles cases where payment was captured but ValidatorException occurred before transaction creation
-                $transactionId = $orderPayment->getAdditionalInformation('transaction_id')
-                    ?: $orderPayment->getAdditionalInformation('charge_id');
-
-                if (!$transactionId) {
-                    $errorMessage = "Transaction information is missing.";
-                }
-            } else {
-                $transactionId = $transaction->getTxnId();
+            if ($createdTransaction) {
+                $transactionId = $createdTransaction->getTxnId();
             }
 
-            // Retrieve invoice - create manually if needed for ValidatorException case
             $invoice = $orderPayment->getCreatedInvoice();
 
             if (!$invoice) {
-                // Create invoice manually for refund
-                // This is required when ValidatorException occurs after payment capture but before invoice creation
                 $invoice = $order->prepareInvoice();
                 $invoice->register();
             }
@@ -148,6 +130,7 @@ class OrderCancellation
 
             $methodInstance->refund($orderPayment, $orderPayment->getAmountPaid());
 
+            // Step 6: Propagate original exception after successful rollback.
             throw $e;
         } finally {
             $this->placedOrderHolder->clear();
