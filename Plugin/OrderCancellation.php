@@ -73,6 +73,12 @@ class OrderCancellation
                 );
             }
 
+        
+            if ($order->getId()) {
+                $order->cancel();
+                $this->orderRepository->save($order);
+            }
+
             /** @var \Magento\Sales\Model\Order\Payment|null */
             $orderPayment = $order->getPayment();
 
@@ -80,31 +86,24 @@ class OrderCancellation
                 throw $e;
             }
 
-            $transactionId = $orderPayment->getAdditionalInformation('transaction_id')
+            $createdTransaction = $orderPayment->getCreatedTransaction();
+            $transactionId = $createdTransaction?->getTxnId()
+                ?: $orderPayment->getAdditionalInformation('transaction_id')
                 ?: $orderPayment->getAdditionalInformation('charge_id');
 
             if (!$transactionId) {
                 throw $e;
             }
 
-            if ($order->getId()) {
-                $order->cancel();
-                $this->orderRepository->save($order);
-            }
-
             $methodInstance = $orderPayment->getMethodInstance();
             $methodInstance->setStore($order->getStoreId());
 
-            $errorMessage = "";
-
             if (!$methodInstance->canRefund()) {
-                $errorMessage = "Transaction can not be refunded.";
-            }
-
-            $createdTransaction = $orderPayment->getCreatedTransaction();
-
-            if ($createdTransaction) {
-                $transactionId = $createdTransaction->getTxnId();
+                throw new RuntimeException(
+                    $errorMessagePrefix . "Transaction can not be refunded.",
+                    $e->getCode(),
+                    $e
+                );
             }
 
             $invoice = $orderPayment->getCreatedInvoice();
@@ -114,14 +113,6 @@ class OrderCancellation
                 $invoice->register();
             }
 
-            if ($errorMessage) {
-                throw new RuntimeException(
-                    $errorMessagePrefix . $errorMessage,
-                    $e->getCode(),
-                    $e
-                );
-            }
-
             $creditmemo = $this->creditmemoFactory->createByOrder($order);
             $creditmemo->setInvoice($invoice);
 
@@ -129,8 +120,6 @@ class OrderCancellation
             $orderPayment->setParentTransactionId($transactionId);
 
             $methodInstance->refund($orderPayment, $orderPayment->getAmountPaid());
-
-            // Step 6: Propagate original exception after successful rollback.
             throw $e;
         } finally {
             $this->placedOrderHolder->clear();
