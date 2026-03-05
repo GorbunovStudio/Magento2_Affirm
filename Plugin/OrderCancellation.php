@@ -117,6 +117,7 @@ class OrderCancellation
 
             $creditmemo = $this->creditmemoFactory->createByOrder($order);
             $creditmemo->setInvoice($invoice);
+            $creditmemo->setGrandTotal($orderPayment->getAmountAuthorized());
 
             $orderPayment->setCreditmemo($creditmemo);
             $orderPayment->setParentTransactionId($transactionId);
