@@ -77,6 +77,8 @@ class OrderCancellation
             if ($order->getId()) {
                 $order->cancel();
                 $this->orderRepository->save($order);
+
+                throw $e;
             }
 
             /** @var \Magento\Sales\Model\Order\Payment|null */
