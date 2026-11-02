@@ -100,15 +100,32 @@ class PaymentActionsValidator extends AbstractResponseValidator
 
         $amountInCents = $this->util->formatToCents($amount);
 
+        // Capture is the one step where Magento may not have told Affirm an amount at all
+        // (partial_capture disabled -> Affirm captures the full remaining authorized balance
+        // server-side). The invoice grand-total has no guaranteed relationship to that
+        // server-computed value, so only enforce the amount match when we actually specified
+        // one. Authorize/pre-auth/refund always send an explicit amount, so they're unaffected.
+        $shouldValidateAmount = $transaction_step !== 'capture'
+            || $_payment->getAdditionalInformation(self::CAPTURE_AMOUNT_SPECIFIED);
+
         $errorMessages = [];
         $validationResult = $this->validateResponseCode($response)
-            && $this->validateTotalAmount($response, $amountInCents);
+            && (!$shouldValidateAmount || $this->validateTotalAmount($response, $amountInCents));
 
         if (!$validationResult) {
+            // Build one Phrase, not a concatenated string, or ->render() below fatals.
             $errorMessages = (isset($response[self::ERROR_MESSAGE])) ?
-                [__($response[self::ERROR_MESSAGE]) . __(' Affirm status code: ') . $response[self::RESPONSE_CODE]]:
+                [__($response[self::ERROR_MESSAGE] . ' Affirm status code: ' . $response[self::RESPONSE_CODE])]:
                 [__('Transaction has been declined, please, try again later.')];
-            
+
+            // Refund is detected above; LAST_INVOICE_AMOUNT is capture-only, so anything
+            // still unset here is an authorize-context decline.
+            if ($transaction_step === '') {
+                $transaction_step = ($_payment->getAdditionalInformation(self::LAST_INVOICE_AMOUNT) !== null)
+                    ? 'capture'
+                    : 'auth';
+            }
+
             $this->errorTracker->logErrorToAffirm(
                 transaction_step: $transaction_step,
                 error_type: ErrorTracker::TRANSACTION_DECLINED,
