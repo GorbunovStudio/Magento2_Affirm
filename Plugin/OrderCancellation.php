@@ -20,7 +20,7 @@ class OrderCancellation
     /**
      * @param \Magento\Quote\Api\CartRepositoryInterface $quoteRepository 
      * @param \Magento\Sales\Api\OrderRepositoryInterface $orderRepository 
-     * @param \Astound\Affirm\Service\PlacedOrderHolder\PlacedOrderHolder $placedOrderHolder 
+     * @param \Astound\Affirm\Service\PlacedOrderHolder $placedOrderHolder
      * @param \Magento\Sales\Model\Order\CreditmemoFactory $creditmemoFactory 
      */
     public function __construct(
@@ -34,7 +34,7 @@ class OrderCancellation
         CartManagementInterface $subject,
         Closure $proceed,
         int $cartId,
-        PaymentInterface $payment = null
+        ?PaymentInterface $payment = null
     ): int {
         try {
             return (int)$proceed($cartId, $payment);
@@ -60,7 +60,7 @@ class OrderCancellation
             if (!$order) {
                 throw new RuntimeException(
                     $errorMessagePrefix . "Order data unavailable. Reserved order ID: {$quote->getReservedOrderId()}",
-                    $e->getCode(),
+                    (int)$e->getCode(),
                     $e
                 );
             }
@@ -68,7 +68,7 @@ class OrderCancellation
             if ($order->getIncrementId() !== $quote->getReservedOrderId()) {
                 throw new RuntimeException(
                     $errorMessagePrefix . "Available order data ({$order->getIncrementId()}, {$order->getId()}) doesn't match the quote value: {$quote->getReservedOrderId()}",
-                    $e->getCode(),
+                    (int)$e->getCode(),
                     $e
                 );
             }
@@ -103,7 +103,7 @@ class OrderCancellation
             if (!$methodInstance->canRefund()) {
                 throw new RuntimeException(
                     $errorMessagePrefix . "Transaction can not be refunded.",
-                    $e->getCode(),
+                    (int)$e->getCode(),
                     $e
                 );
             }

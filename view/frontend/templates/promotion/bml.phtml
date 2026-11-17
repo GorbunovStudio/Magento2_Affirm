@@ -35,18 +35,24 @@
 ?>
 <?php
     $mfpValue = $block->getMFPValue();
-    $size = str_replace("--",'',$block->getSize());
-    list($width, $height) = explode('x',$size);
+    $size = str_replace("--", '', $block->getSize());
+    list($width, $height) = explode('x', $size);
     $affirmAssetsUrl = $block->getAffirmAssetsUrl();
     $options = $block->getOptions();
     $pageType = $block->getPageType();
 ?>
-<?php echo $block->getStartContainerTag(); ?>
-<?php
-    echo '<div class="affirm-banner-container">
-            <a class="affirm-site-modal" data-mage-init=\'{"Astound_Affirm/js/affirmWidget": '.$options.'}\'' . (!empty($mfpValue) ? 'data-promo-id="' . $mfpValue . '"' : '') . '' .(!empty($pageType) ? 'data-page-type="' . $pageType . '"' : '').'>
-                <img style="max-width:'. $width .'px; max-height:'. $height .'px; " src="' . $affirmAssetsUrl . $size .'.png">
-            </a>
-        </div>';
-?>
-<?php echo $block->getEndContainerTag(); ?>
+<?= /* @noEscape */ $block->getStartContainerTag() ?>
+<div class="affirm-banner-container">
+    <a class="affirm-site-modal"
+       data-mage-init='{"Astound_Affirm/js/affirmWidget": <?= /* @noEscape */ $options ?>}'
+       <?php if (!empty($mfpValue)): ?>
+       data-promo-id="<?= $escaper->escapeHtmlAttr($mfpValue) ?>"
+       <?php endif; ?>
+       <?php if (!empty($pageType)): ?>
+       data-page-type="<?= $escaper->escapeHtmlAttr($pageType) ?>"
+       <?php endif; ?>>
+        <img style="max-width:<?= $escaper->escapeHtmlAttr($width) ?>px; max-height:<?= $escaper->escapeHtmlAttr($height) ?>px;"
+             src="<?= $escaper->escapeUrl($affirmAssetsUrl . $size . '.png') ?>">
+    </a>
+</div>
+<?= /* @noEscape */ $block->getEndContainerTag() ?>
